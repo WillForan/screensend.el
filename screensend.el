@@ -65,6 +65,19 @@
 
 (require 'dash)
 
+(defgroup screen-send nil
+  "Send lines to tmux/screen/konsole/iterm from emacs"
+  :group 'text
+  :prefix "screen-send-"
+  :tag "screen-send"
+)
+
+(defcustom screen-send-terminal "urxvt -e bash -c"
+  "terminal and execute switch. space delimn."
+  :group 'screen-send
+  :type 'string
+)
+
 (make-variable-buffer-local 'screen-session)
 (make-variable-buffer-local 'tmux-session)
 (make-variable-buffer-local 'konsole-session)
@@ -267,6 +280,15 @@ block of text to the screen session."
     (delete-file tmpfile)
     (deactivate-mark)))
 
+(defun screen-send-new-tmux (&optional session-name)
+  "make a new tmux session `SESSION-NAME' using screen-send-terminal"
+  (let* ((session-name (if (null session-name) (read-string "session name:") session-name))
+	(cmd  (concat "tmux new -s " session-name))
+	(term-split (split-string screen-send-terminal))
+	(term (car term-split))
+	(exec (append (cdr term-split) (list cmd))))
+    (apply #'call-process term nil 0 nil exec)
+    session-name))
 (defun tmux-list ()
   "Get list of active tmux sessions."
   (let ((output (with-output-to-string
@@ -287,13 +309,20 @@ block of text to the screen session."
    (list (completing-read "Select a tmux session: " (tmux-list))))
   (setq tmux-session session))
 
+(defun tmux-select-or-make (session)
+  "Select a tmux `SESSION'. Create if selection not already a session"
+  (interactive
+     (list (completing-read "Select a tmux session: " (tmux-list))))
+  (when (not (memq session (tmux-list)))
+      (screen-send-new-tmux session))
+  (setq tmux-session session))
 ;;;###autoload
 (defun tmux-send ()
   "Send selected region or currently-surrounding blank line-separated \
 block of text to the selected tmux session."
   (interactive)
   (when (not tmux-session)
-    (call-interactively 'tmux-select))
+    (call-interactively 'tmux-select-or-make))
   (let ((selected (progn
                     (when (equal mark-active nil)
                       (mark-paragraph)
